@@ -7,7 +7,7 @@ class ContractContract(models.Model):
     payment_mode_id = fields.Many2one(
         comodel_name='account.payment.mode',
         string='Payment Mode',
-        domain=[('payment_type', '=', 'inbound')],
+#         domain=[('payment_type', '=', 'inbound')],
         index=True,
     )
 
