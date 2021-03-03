@@ -12,7 +12,7 @@
                        domain="[('partner_id', '=', commercial_partner_id), ('state', '=', 'valid')]"
                        attrs="{'invisible': [('mandate_required', '=', False)]}"/>
                 <field name="commercial_partner_id" invisible="1"/>
-                <field name="mandate_required" invisible="1"/>
+                <field name= "mandate_required" invisible="1"/>
             </field>
         </field>
     </record>
