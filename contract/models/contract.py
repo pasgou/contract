@@ -123,6 +123,70 @@ class ContractContract(models.Model):
         copy=False,
         track_visibility="onchange",
     )
+    modification_ids = fields.One2many(
+        comodel_name='contract.modification',
+        inverse_name='contract_id',
+        string='Modifications',
+    )
+
+    def get_formview_id(self, access_uid=None):
+        if self.contract_type == "sale":
+            return self.env.ref("contract.contract_contract_customer_form_view").id
+        else:
+            return self.env.ref("contract.contract_contract_supplier_form_view").id
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        records = super().create(vals_list)
+        records._set_start_contract_modification()
+        return records
+
+    def write(self, vals):
+        if 'modification_ids' in vals:
+            res = super(ContractContract, self.with_context(
+                bypass_modification_send=True
+            )).write(vals)
+            self._modification_mail_send()
+        else:
+            res = super(ContractContract, self).write(vals)
+        return res
+
+    @api.model
+    def _set_start_contract_modification(self):
+        subtype_id = self.env.ref('contract.mail_message_subtype_contract_modification')
+        for record in self:
+            if record.contract_line_ids:
+                date_start = min(record.contract_line_ids.mapped('date_start'))
+            else:
+                date_start = record.create_date
+            record.message_subscribe(
+                partner_ids=[record.partner_id.id],
+                subtype_ids=[subtype_id.id]
+            )
+            record.with_context(skip_modification_mail=True).write({
+                'modification_ids': [
+                    (0, 0, {'date': date_start, 'description': _('Contract start')})
+                ]
+            })
+
+    @api.model
+    def _modification_mail_send(self):
+        for record in self:
+            modification_ids_not_sent = record.modification_ids.filtered(
+                lambda x: not x.sent
+            )
+            if modification_ids_not_sent:
+                if not self.env.context.get('skip_modification_mail'):
+                    record.message_post_with_template(
+                        self.env.ref(
+                            "contract.mail_template_contract_modification"
+                        ).id,
+                        notif_layout="contract.template_contract_modification",
+                        subtype_id=self.env.ref(
+                            'contract.mail_message_subtype_contract_modification'
+                        ).id
+                    )
+                modification_ids_not_sent.write({'sent': True})
 
     @api.multi
     def _inverse_partner_id(self):
@@ -428,7 +492,9 @@ class ContractContract(models.Model):
                 lambda x: invoice_create_subtype in x.subtype_ids
             ).mapped('partner_id')
             if partner_ids:
-                invoices.message_subscribe(partner_ids=partner_ids.ids)
+                (
+                    invoices & item._get_related_invoices()
+                ).message_subscribe(partner_ids=partner_ids.ids)
 
     @api.model
     def _finalize_and_create_invoices(self, invoices_values):

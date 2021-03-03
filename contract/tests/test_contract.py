@@ -25,6 +25,7 @@ class TestContractBase(common.SavepointCase):
         cls.partner = cls.env['res.partner'].create({
             'name': 'partner test contract',
             'property_product_pricelist': cls.pricelist.id,
+            'email': 'demo@demo.com'
         })
         cls.product_1 = cls.env.ref('product.product_product_1')
         cls.product_2 = cls.env.ref('product.product_product_2')
@@ -132,6 +133,46 @@ class TestContract(TestContractBase):
         vals['contract_id'] = self.template.id
         vals.update(overrides)
         return self.env['contract.template.line'].create(vals)
+
+    def test_add_modifications(self):
+        partner2 = self.partner.copy()
+        subtype = self.env.ref('contract.mail_message_subtype_contract_modification')
+        self.contract.message_subscribe(
+            partner_ids=partner2.ids,
+            subtype_ids=subtype.ids
+        )
+        # Check initial modification auto-creation
+        self.assertEqual(len(self.contract.modification_ids), 1)
+        self.contract.write({
+            'modification_ids': [
+                (
+                    0,
+                    0,
+                    {
+                        'date': '2020-01-01',
+                        'description': 'Modification 1',
+                    }
+                ),
+                (
+                    0,
+                    0,
+                    {
+                        'date': '2020-02-01',
+                        'description': 'Modification 2',
+                    }
+                )
+            ]
+        })
+        partner_ids = self.contract.message_follower_ids.filtered(
+            lambda x: subtype in x.subtype_ids
+        ).mapped('partner_id')
+        self.assertGreaterEqual(len(partner_ids), 2)
+        total_mail_messages = self.env["mail.message"].search_count([
+            ("model", "=", "contract.contract"),
+            ("res_id", "=", self.contract.id),
+            ("subtype_id", "=", subtype.id)
+        ])
+        self.assertGreaterEqual(total_mail_messages, 1)
 
     def test_check_discount(self):
         with self.assertRaises(ValidationError):
